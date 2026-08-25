@@ -35,14 +35,33 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     private val _uiState = MutableStateFlow(
         LauncherUiState(
-            cardKeySaved = store.hasSavedKeyFor(rememberedSo),
             selectedSoFile = rememberedSo
         )
     )
     val uiState = _uiState.asStateFlow()
 
     init {
+        restoreSecureState()
         refreshRoot()
+    }
+
+    /**
+     * Crypto is deliberately deferred out of the ViewModel constructor.  A
+     * broken legacy encrypted preference must show an in-app status rather
+     * than preventing MainActivity from starting.
+     */
+    private fun restoreSecureState() {
+        viewModelScope.launch {
+            val restoredSelection = store.restoreLegacySelectedSo().takeIf(::isSafeSoFileName)
+            val selected = _uiState.value.selectedSoFile ?: restoredSelection
+            _uiState.update {
+                it.copy(
+                    selectedSoFile = selected,
+                    cardKeySaved = store.hasSavedKeyFor(selected),
+                    statusDetail = store.secureStorageMessage() ?: it.statusDetail,
+                )
+            }
+        }
     }
 
     fun selectTab(tab: AppTab) {
@@ -140,7 +159,15 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun saveCardKey(cardKey: String): Boolean {
         val selectedSo = _uiState.value.selectedSoFile ?: return false
         if (cardKey.isBlank()) return false
-        store.saveCardKeyFor(selectedSo, cardKey)
+        if (!store.saveCardKeyFor(selectedSo, cardKey)) {
+            _uiState.update {
+                it.copy(
+                    cardKeySaved = false,
+                    statusDetail = store.secureStorageMessage() ?: "安全存储不可用，卡密未保存"
+                )
+            }
+            return false
+        }
         _uiState.update {
             it.copy(
                 cardKeySaved = true,
@@ -156,7 +183,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun clearCardKey() {
         val selectedSo = _uiState.value.selectedSoFile ?: return
-        store.clearCardKeyFor(selectedSo)
+        if (!store.clearCardKeyFor(selectedSo)) {
+            _uiState.update {
+                it.copy(statusDetail = store.secureStorageMessage() ?: "安全存储不可用，未清除卡密")
+            }
+            return
+        }
         _uiState.update {
             it.copy(
                 cardKeySaved = false,
