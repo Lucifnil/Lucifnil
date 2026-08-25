@@ -54,7 +54,7 @@ jobs:
     needs: build
     # The ARM macOS host cannot expose Hypervisor.framework to the nested
     # Android emulator (HV_UNSUPPORTED), so it exits before the APK is ever
-    # installed. Use the official Linux/KVM configuration instead.
+    # installed.  Use the official Linux/KVM configuration instead.
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -81,6 +81,9 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -no-snapshot-save -gpu swiftshader_indirect
           script: |
+            # The previous run never installed the APK: its inherited ADB
+            # daemon died with Broken pipe.  Start a fresh server before
+            # treating this as a cold-start result.
             adb kill-server || true
             adb start-server
             adb wait-for-device
@@ -88,10 +91,14 @@ jobs:
             adb install -r artifact/app-debug.apk
             adb logcat -c
             adb shell am force-stop com.kikyo.cloudlauncher
-            adb shell am start -W -n com.kikyo.cloudlauncher/.MainActivity
+            # android-emulator-runner executes script lines independently.
+            # Keep every command self-contained so a failure still leaves the
+            # startup result and the relevant AndroidRuntime trace in the log.
+            timeout 25 adb shell am start -W -n com.kikyo.cloudlauncher/.MainActivity > activity-start.txt 2>&1 || true
+            cat activity-start.txt
             sleep 8
+            adb logcat -d -v threadtime | grep -E -A 80 -B 5 'FATAL EXCEPTION|Process: com\.kikyo\.cloudlauncher|ANR in com\.kikyo\.cloudlauncher' > cold-start.log || true
+            cat cold-start.log
+            test ! -s cold-start.log
             test -n "$(adb shell pidof com.kikyo.cloudlauncher | tr -d '\r')"
-            if adb logcat -d -v brief | grep -Eq 'FATAL EXCEPTION|Process: com\.kikyo\.cloudlauncher'; then
-              adb logcat -d -v brief
-              exit 1
-            fi
+            test -z "$(grep 'Status: timeout' activity-start.txt)"
