@@ -305,7 +305,7 @@ private fun ProfileHeader(rootState: RootState, backdrop: Backdrop) {
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "CINNAMOROLL  ·  V1.3.1",
+                    text = "CINNAMOROLL  ·  V1.3.2",
                     color = MutedBlue,
                     fontSize = 10.sp,
                     maxLines = 1,
