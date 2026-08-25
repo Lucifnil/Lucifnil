@@ -6,9 +6,9 @@ plugins {
 android {
     namespace = "com.kikyo.cloudlauncher"
     compileSdk {
-        version = release(37)
+        version = release(36)
     }
-    buildToolsVersion = "37.0.0"
+    buildToolsVersion = "36.0.0"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
@@ -18,7 +18,7 @@ android {
     defaultConfig {
         applicationId = "com.kikyo.cloudlauncher"
         minSdk = 26
-        targetSdk = 37
+        targetSdk = 36
         versionCode = 22
         versionName = "1.3.0"
 
