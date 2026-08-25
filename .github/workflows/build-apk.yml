@@ -97,8 +97,20 @@ jobs:
             timeout 25 adb shell am start -W -n com.kikyo.cloudlauncher/.MainActivity > activity-start.txt 2>&1 || true
             cat activity-start.txt
             sleep 8
-            adb logcat -d -v threadtime | grep -E -A 80 -B 5 'FATAL EXCEPTION|Process: com\.kikyo\.cloudlauncher|ANR in com\.kikyo\.cloudlauncher' > cold-start.log || true
+            adb logcat -d -v threadtime > cold-start-full.log || true
+            adb logcat -d -v threadtime | grep -E -A 100 -B 15 'FATAL EXCEPTION|Fatal signal|Process: com\.kikyo\.cloudlauncher|ANR in com\.kikyo\.cloudlauncher|tombstoned' > cold-start.log || true
             cat cold-start.log
             test ! -s cold-start.log
             test -n "$(adb shell pidof com.kikyo.cloudlauncher | tr -d '\r')"
             test -z "$(grep 'Status: timeout' activity-start.txt)"
+
+      - name: Upload cold-start diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CloudLauncher-cold-start-diagnostics
+          path: |
+            activity-start.txt
+            cold-start.log
+            cold-start-full.log
+          if-no-files-found: warn
