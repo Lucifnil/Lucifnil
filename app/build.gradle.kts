@@ -17,14 +17,9 @@ android {
         applicationId = "com.kikyo.cloudlauncher"
         minSdk = 26
         targetSdk = 36
-        versionCode = 24
-        versionName = "1.3.2"
+        versionCode = 25
+        versionName = "1.3.3"
 
-        buildConfigField(
-            "String",
-            "LAUNCHER_SCRIPT_PATH",
-            "\"/data/adb/嗯嗯启动器.sh\""
-        )
         buildConfigField(
             "String",
             "LAUNCHER_DIRECTORY",
