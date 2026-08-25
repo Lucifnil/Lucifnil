@@ -5,11 +5,11 @@ package com.kikyo.cloudlauncher.liquid
 
 import android.os.Build
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.spring
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Offset.Companion.VectorConverter
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
@@ -23,7 +23,7 @@ internal class InteractiveHighlight(
     private val position: (Size, Offset) -> Offset = { _, offset -> offset },
 ) {
     private val progress = Animatable(0f, 0.001f)
-    private val touch = Animatable(Offset.Zero, VectorConverter, Offset(0.1f, 0.1f))
+    private val touch = Animatable(Offset.Zero, Offset.VectorConverter, Offset(0.1f, 0.1f))
     private var initialTouch = Offset.Zero
     // Keep RuntimeShader in an API-33-only class.  Referencing it directly in
     // this always-loaded composable could make older Android versions verify a
