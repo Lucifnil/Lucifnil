@@ -5,13 +5,18 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# A newer fix supersedes any stale emulator boot immediately.
+concurrency:
+  group: cloudlauncher-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 25
 
     steps:
       - name: Check out source
@@ -36,8 +41,26 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon --stacktrace assembleDebug
-          cp app/build/outputs/apk/debug/app-debug.apk \
-            app/build/outputs/apk/debug/CloudLauncher-v1.3.1-debug.apk
+
+      # Upload first. An emulator download can never hold delivery hostage.
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: CloudLauncher-v1.3.1-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+  verify-cold-start:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    steps:
+      - name: Download compiled APK
+        uses: actions/download-artifact@v4
+        with:
+          name: CloudLauncher-v1.3.1-debug
+          path: artifact
 
       - name: Verify cold start on Android 35 emulator
         uses: reactivecircus/android-emulator-runner@v2
@@ -47,7 +70,7 @@ jobs:
           profile: pixel_2
           disable-animations: true
           script: |
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb install -r artifact/app-debug.apk
             adb logcat -c
             adb shell am force-stop com.kikyo.cloudlauncher
             adb shell am start -W -n com.kikyo.cloudlauncher/.MainActivity
@@ -57,10 +80,3 @@ jobs:
               adb logcat -d -v brief
               exit 1
             fi
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: CloudLauncher-v1.3.1-debug
-          path: app/build/outputs/apk/debug/CloudLauncher-v1.3.1-debug.apk
-          if-no-files-found: error
