@@ -5,11 +5,11 @@ package com.kikyo.cloudlauncher.liquid
 
 import android.os.Build
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.spring
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Offset.Companion.VectorConverter
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
