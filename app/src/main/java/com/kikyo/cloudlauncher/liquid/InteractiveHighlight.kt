@@ -8,6 +8,7 @@ package com.kikyo.cloudlauncher.liquid
 import android.annotation.SuppressLint
 import android.graphics.RuntimeShader
 import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.VisibilityThreshold
@@ -19,13 +20,13 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.util.fastCoerceIn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
-@SuppressLint("NewApi")
 internal class InteractiveHighlight(
     private val animationScope: CoroutineScope,
     private val position: (size: Size, offset: Offset) -> Offset = { _, offset -> offset },
@@ -34,14 +35,13 @@ internal class InteractiveHighlight(
     private val positionAnimation = Animatable(Offset.Zero, Offset.VectorConverter, Offset.VisibilityThreshold)
     private var startPosition = Offset.Zero
 
-    // RuntimeShader exists from Android 13 (API 33). SukiSU's original code
-    // uses this shader directly; older devices receive the safe radial fallback.
-    private val shader: RuntimeShader? =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            RuntimeShader(PRESS_HIGHLIGHT_SHADER)
-        } else {
-            null
-        }
+    // Keep the API-33-only class out of this object's field signature. Some
+    // vendor ART implementations verify that signature before the SDK guard.
+    private val shader: Any? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        RuntimeShaderCompat.create(PRESS_HIGHLIGHT_SHADER)
+    } else {
+        null
+    }
 
     val modifier: Modifier = Modifier.drawWithContent {
         val progress = pressProgressAnimation.value
@@ -52,18 +52,13 @@ internal class InteractiveHighlight(
             )
             val activeShader = shader
             val lightPosition = position(size, positionAnimation.value)
-            if (activeShader != null) {
-                activeShader.apply {
-                    setFloatUniform("size", size.width, size.height)
-                    setColorUniform("color", Color.White.copy(alpha = 0.12f * progress).toArgb())
-                    setFloatUniform("radius", size.minDimension * 1.2f)
-                    setFloatUniform(
-                        "position",
-                        lightPosition.x.fastCoerceIn(0f, size.width),
-                        lightPosition.y.fastCoerceIn(0f, size.height),
-                    )
-                }
-                drawRect(ShaderBrush(activeShader), blendMode = BlendMode.Plus)
+            if (activeShader != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                drawRuntimeHighlight(
+                    shader = activeShader,
+                    size = size,
+                    position = lightPosition,
+                    alpha = 0.12f * progress,
+                )
             } else {
                 drawCircle(
                     color = Color.White.copy(alpha = 0.10f * progress),
@@ -132,4 +127,33 @@ internal class InteractiveHighlight(
             }
         """
     }
+}
+
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+private object RuntimeShaderCompat {
+    fun create(source: String): Any? = runCatching {
+        RuntimeShader(source)
+    }.getOrNull()
+}
+
+@SuppressLint("NewApi")
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+private fun DrawScope.drawRuntimeHighlight(
+    shader: Any,
+    size: Size,
+    position: Offset,
+    alpha: Float,
+) {
+    val runtimeShader = shader as? RuntimeShader ?: return
+    runtimeShader.apply {
+        setFloatUniform("size", size.width, size.height)
+        setColorUniform("color", Color.White.copy(alpha = alpha).toArgb())
+        setFloatUniform("radius", size.minDimension * 1.2f)
+        setFloatUniform(
+            "position",
+            position.x.fastCoerceIn(0f, size.width),
+            position.y.fastCoerceIn(0f, size.height),
+        )
+    }
+    drawRect(ShaderBrush(runtimeShader), blendMode = BlendMode.Plus)
 }
