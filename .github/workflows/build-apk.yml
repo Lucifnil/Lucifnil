@@ -46,28 +46,31 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: CloudLauncher-v1.3.2-debug
+          name: CloudLauncher-v1.3.3-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
   verify-cold-start:
     needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 12
+    # The Ubuntu runner has no KVM access; the prior job never booted Android
+    # and therefore never installed the APK.  Use an ARM macOS runner so this
+    # is an actual device-process verification rather than an ADB timeout.
+    runs-on: macos-14
+    timeout-minutes: 20
 
     steps:
       - name: Download compiled APK
         uses: actions/download-artifact@v4
         with:
-          name: CloudLauncher-v1.3.2-debug
+          name: CloudLauncher-v1.3.3-debug
           path: artifact
 
-      - name: Verify cold start on Android 33 emulator
+      - name: Verify cold start on Android 33 ARM emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 33
           target: google_apis
-          arch: x86_64
+          arch: arm64-v8a
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect
