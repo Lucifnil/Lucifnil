@@ -125,46 +125,50 @@ fun CloudLauncherApp(
     val pageBackdrop = rememberLayerBackdrop()
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Capture the live page only.  The bar is drawn outside this node so
-        // it refracts the page and never blurs/feeds back into itself.
-        Box(
+        // A LayerBackdrop must capture *only* the scene behind glass.  The
+        // previous structure captured this Scaffold too, while its cards were
+        // simultaneously sampling pageBackdrop.  That creates a RenderNode
+        // cycle and causes a native RenderThread stack overflow / SIGSEGV.
+        CloudBackground(
             modifier = Modifier
                 .fillMaxSize()
-                .layerBackdrop(pageBackdrop)
-        ) {
-            CloudBackground()
-            Scaffold(
-                containerColor = Color.Transparent,
-                bottomBar = {
-                    Spacer(
-                        modifier = Modifier
-                            .navigationBarsPadding()
-                            .height(88.dp)
-                    )
-                }
-            ) { contentPadding ->
-                when (state.selectedTab) {
-                    AppTab.Home -> HomeScreen(
-                        state = state,
-                        contentPadding = contentPadding,
-                        backdrop = pageBackdrop,
-                        onLaunch = onLaunch,
-                        onShowLogs = { showLogs = true }
-                    )
+                .layerBackdrop(pageBackdrop),
+        )
 
-                    AppTab.Settings -> SettingsScreen(
-                        state = state,
-                        contentPadding = contentPadding,
-                        backdrop = pageBackdrop,
-                        onSaveCardKey = onSaveCardKey,
-                        onClearCardKey = onClearCardKey,
-                        onRefreshRoot = onRefreshRoot,
-                        onRefreshSoFiles = onRefreshSoFiles,
-                        onSelectSoFile = onSelectSoFile
-                    )
-                }
+        // Glass surfaces are siblings of their captured scene, never children
+        // of it.  They still sample the live gradient through pageBackdrop.
+        Scaffold(
+            containerColor = Color.Transparent,
+            bottomBar = {
+                Spacer(
+                    modifier = Modifier
+                        .navigationBarsPadding()
+                        .height(88.dp)
+                )
+            }
+        ) { contentPadding ->
+            when (state.selectedTab) {
+                AppTab.Home -> HomeScreen(
+                    state = state,
+                    contentPadding = contentPadding,
+                    backdrop = pageBackdrop,
+                    onLaunch = onLaunch,
+                    onShowLogs = { showLogs = true }
+                )
+
+                AppTab.Settings -> SettingsScreen(
+                    state = state,
+                    contentPadding = contentPadding,
+                    backdrop = pageBackdrop,
+                    onSaveCardKey = onSaveCardKey,
+                    onClearCardKey = onClearCardKey,
+                    onRefreshRoot = onRefreshRoot,
+                    onRefreshSoFiles = onRefreshSoFiles,
+                    onSelectSoFile = onSelectSoFile
+                )
             }
         }
+
         CloudBottomBar(
             selectedTab = state.selectedTab,
             onSelectTab = onSelectTab,
@@ -182,9 +186,9 @@ fun CloudLauncherApp(
 }
 
 @Composable
-private fun CloudBackground() {
+private fun CloudBackground(modifier: Modifier = Modifier) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
