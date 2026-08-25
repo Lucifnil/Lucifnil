@@ -49,11 +49,7 @@ data class SoFileScanResult(
     val detail: String
 )
 
-/**
- * Runs the original launcher shell script through the device's root manager.
- * The script remains the source of truth for locating the .so file and
- * preserving the required --record-mirror argument.
- */
+/** Runs the selected native executable directly through the device's root manager. */
 class RootRunner {
     suspend fun checkRoot(): RootCheck = withContext(Dispatchers.IO) {
         try {
@@ -81,17 +77,26 @@ class RootRunner {
         }
     }
 
-    suspend fun runLauncher(
-        scriptPath: String,
+    suspend fun runSelectedSo(
+        directory: String,
         cardKey: String,
         soFileName: String,
         onLog: (CommandLog) -> Unit
     ): CommandResult = withContext(Dispatchers.IO) {
         try {
+            if (!isSafeSoFileName(soFileName)) {
+                return@withContext CommandResult(null, false, "无效的 .so 文件名")
+            }
             coroutineScope {
-                val command = "/system/bin/sh " + shellQuote(scriptPath) +
-                    " -k " + shellQuote(cardKey) +
-                    " -s " + shellQuote(soFileName)
+                // Migrated from the former /data/adb/嗯嗯启动器.sh contract:
+                // chmod 700 <selected.so> && exec <selected.so> -k <key> --record-mirror
+                // The app now owns that fixed contract directly; no external
+                // launcher script is required on the device.
+                val command = directLaunchCommand(
+                    directory = directory,
+                    soFileName = soFileName,
+                    cardKey = cardKey,
+                )
                 val process = ProcessBuilder("su", "-c", command).start()
 
                 val stdout = async(Dispatchers.IO) {
@@ -140,8 +145,8 @@ class RootRunner {
      * This deliberately uses the shell glob instead of `find`: Android devices
      * ship different toybox versions, while the glob is supported by the system
      * shell. `-f` accepts both ordinary files and a symlink whose target is a
-     * regular file. We do not require the execute bit here because the launcher
-     * script adds it immediately before starting the selected entry.
+     * regular file. We do not require the execute bit here because the app
+     * grants the selected entry execute permission immediately before launch.
      */
     suspend fun listSoFiles(directory: String): SoFileScanResult = withContext(Dispatchers.IO) {
         try {
@@ -230,6 +235,22 @@ class RootRunner {
 
     private fun shellQuote(value: String): String {
         return "'" + value.replace("'", "'\"'\"'") + "'"
+    }
+
+    private fun directLaunchCommand(
+        directory: String,
+        soFileName: String,
+        cardKey: String,
+    ): String = buildString {
+        append("target_dir=").append(shellQuote(directory))
+        append("; selected_name=").append(shellQuote(soFileName))
+        append("; so_file=\"\$target_dir/\$selected_name\"")
+        append("; if [ ! -f \"\$so_file\" ]; then ")
+        append("printf '%s\\n' '启动失败：所选 .so 不存在或不是普通文件' >&2; exit 2; fi")
+        append("; chmod 700 \"\$so_file\" || { ")
+        append("printf '%s\\n' '启动失败：无法设置 .so 执行权限' >&2; exit 3; }")
+        append("; exec \"\$so_file\" -k ").append(shellQuote(cardKey))
+        append(" --record-mirror")
     }
 
     private fun isSafeSoFileName(name: String): Boolean {
