@@ -1,0 +1,64 @@
+name: Publish CloudLauncher v1.3.4
+
+# This workflow only runs when it is added or deliberately dispatched.  It
+# builds the same source in main and attaches the APK to a durable GitHub
+# Release rather than leaving it only as an expiring Actions artifact.
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/publish-v1.3.4.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-cloudlauncher-v1.3.4
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android 36 platform
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Build release attachment
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace assembleDebug
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk dist/CloudLauncher-v1.3.4-debug.apk
+
+      - name: Publish or replace the v1.3.4 APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v1.3.4 --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload v1.3.4 dist/CloudLauncher-v1.3.4-debug.apk \
+              --repo "${{ github.repository }}" --clobber
+          else
+            gh release create v1.3.4 dist/CloudLauncher-v1.3.4-debug.apk \
+              --repo "${{ github.repository }}" \
+              --target "${{ github.sha }}" \
+              --title "CloudLauncher v1.3.4" \
+              --notes "Verified Android build containing the RenderThread recursion crash fix."
+          fi
