@@ -1,24 +1,26 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
 android {
     namespace = "com.kikyo.cloudlauncher"
-    compileSdk = 36
+    compileSdk {
+        version = release(37)
+    }
+    buildToolsVersion = "37.0.0"
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
 
     defaultConfig {
         applicationId = "com.kikyo.cloudlauncher"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 21
-        versionName = "1.2.9"
+        targetSdk = 37
+        versionCode = 22
+        versionName = "1.3.0"
 
         buildConfigField(
             "String",
@@ -43,29 +45,27 @@ android {
 }
 
 kotlin {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-    }
+    jvmToolchain(21)
 }
 
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
+    // This is the same Compose line used by SukiSU Ultra with miuix-blur.
+    // Do not mix it with the old 2024 BOM: that was the previous crash path.
+    val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
     implementation(composeBom)
 
-    implementation("androidx.core:core-ktx:1.15.0")
-    implementation("androidx.activity:activity-compose:1.10.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.activity:activity-compose:1.13.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material3:material3:1.5.0-alpha24")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
-    // The same AndroidLiquidGlass stack introduced by SukiSU Ultra's
-    // original floating navigation implementation (Apache-2.0).
-    implementation("io.github.kyant0:backdrop:1.0.6")
-    implementation("io.github.kyant0:capsule:2.1.3")
+    // SukiSU Ultra's actual liquid stack (not a reimplementation).
+    implementation("top.yukonga.miuix.kmp:miuix-blur-android:0.9.3")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")

@@ -1,7 +1,7 @@
 /*
- * Direct adaptation of SukiSU Ultra's original FloatingBottomBar.
- * Sources: SukiSU Ultra commit 3085859 and Kyant0/AndroidLiquidGlass.
- * Apache-2.0. The caller only supplies CloudLauncher colours and tab content.
+ * Directly derived from SukiSU Ultra's FloatingBottomBar (Apache-2.0).
+ * It uses the exact miuix-blur capture/lens composition: one live page
+ * backdrop, one tab-content backdrop, and their combined moving lens.
  */
 package com.kikyo.cloudlauncher.liquid
 
@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -34,11 +35,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -49,23 +49,40 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastCoerceIn
 import androidx.compose.ui.util.fastRoundToInt
 import androidx.compose.ui.util.lerp
-import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
-import com.kyant.backdrop.highlight.Highlight
-import com.kyant.backdrop.shadow.InnerShadow
-import com.kyant.backdrop.shadow.Shadow
-import com.kyant.capsule.ContinuousCapsule
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.blur.Backdrop
+import top.yukonga.miuix.kmp.blur.blur
+import top.yukonga.miuix.kmp.blur.drawBackdrop
+import top.yukonga.miuix.kmp.blur.highlight.BloomStroke
+import top.yukonga.miuix.kmp.blur.highlight.Highlight
+import top.yukonga.miuix.kmp.blur.highlight.LightPosition
+import top.yukonga.miuix.kmp.blur.highlight.LightSource
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import kotlin.math.abs
 import kotlin.math.sign
+
+private val SukiSpecularHighlight = Highlight(
+    width = 1.dp,
+    alpha = 1f,
+    style = BloomStroke(
+        color = Color.White.copy(alpha = 0.12f),
+        innerBlurRadius = 2.dp,
+        primaryLight = LightSource(
+            position = LightPosition(0.5f, -0.3f, -0.05f),
+            color = Color.White,
+            intensity = 1f,
+        ),
+        secondaryLight = LightSource(
+            position = LightPosition(0.5f, 0.8f, -0.5f),
+            color = Color.White,
+            intensity = 0.4f,
+        ),
+        dualPeak = true,
+    ),
+)
 
 @Composable
 internal fun RowScope.LiquidBottomBarItem(
@@ -75,7 +92,6 @@ internal fun RowScope.LiquidBottomBarItem(
 ) {
     Column(
         modifier = modifier
-            .clip(ContinuousCapsule)
             .clickable(
                 interactionSource = null,
                 indication = null,
@@ -100,27 +116,27 @@ internal fun SukiLiquidBottomBar(
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit,
 ) {
-    // The reference draws a low-alpha surface *over* live sampled pixels. It
-    // is deliberately not a white gradient card.
-    val containerColor = Color(0xFFEAF7FF).copy(alpha = 0.10f)
+    val containerColor = Color(0xFFEAF7FF).copy(alpha = 0.20f)
     val tabsBackdrop = rememberLayerBackdrop()
+    val combinedBackdrop = rememberCombinedBackdrop(backdrop, tabsBackdrop)
     val density = LocalDensity.current
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
     val scope = rememberCoroutineScope()
     var tabWidthPx by remember { mutableFloatStateOf(0f) }
     var totalWidthPx by remember { mutableFloatStateOf(0f) }
     val offsetAnimation = remember { Animatable(0f) }
-    val panelOffset by remember(density) {
+    val rubberBandPx = with(density) { 4.dp.toPx() }
+    val panelOffset by remember(rubberBandPx) {
         derivedStateOf {
             if (totalWidthPx == 0f) 0f else {
                 val fraction = (offsetAnimation.value / totalWidthPx).fastCoerceIn(-1f, 1f)
-                with(density) { 4.dp.toPx() * fraction.sign * EaseOut.transform(abs(fraction)) }
+                rubberBandPx * fraction.sign * EaseOut.transform(abs(fraction))
             }
         }
     }
 
     var currentIndex by remember { mutableIntStateOf(selectedIndex()) }
-    class Holder { var value: DampedDragAnimation? = null }
+    class Holder { var instance: DampedDragAnimation? = null }
     val holder = remember { Holder() }
     val drag = remember(scope, tabsCount, density, isLtr) {
         DampedDragAnimation(
@@ -131,13 +147,14 @@ internal fun SukiLiquidBottomBar(
             initialScale = 1f,
             pressedScale = 78f / 56f,
             canDrag = { offset ->
-                val animation = holder.value ?: return@DampedDragAnimation true
+                val animation = holder.instance ?: return@DampedDragAnimation true
                 if (tabWidthPx == 0f) return@DampedDragAnimation false
                 val indicatorX = animation.value * tabWidthPx
                 val padding = with(density) { 4.dp.toPx() }
-                val globalTouchX = if (isLtr) padding + indicatorX + offset.x
-                else totalWidthPx - padding - tabWidthPx - indicatorX + offset.x
-                globalTouchX in 0f..totalWidthPx
+                val globalX = if (isLtr) padding + indicatorX + offset.x else {
+                    totalWidthPx - padding - tabWidthPx - indicatorX + offset.x
+                }
+                globalX in 0f..totalWidthPx
             },
             onDragStarted = {},
             onDragStopped = {
@@ -146,16 +163,16 @@ internal fun SukiLiquidBottomBar(
                 animateToValue(target.toFloat())
                 scope.launch { offsetAnimation.animateTo(0f, spring(1f, 300f, 0.5f)) }
             },
-            onDrag = { _, dragAmount ->
+            onDrag = { _, amount ->
                 if (tabWidthPx > 0f) {
                     updateValue(
-                        (targetValue + dragAmount.x / tabWidthPx * if (isLtr) 1f else -1f)
-                            .fastCoerceIn(0f, (tabsCount - 1).toFloat())
+                        (targetValue + amount.x / tabWidthPx * if (isLtr) 1f else -1f)
+                            .fastCoerceIn(0f, (tabsCount - 1).toFloat()),
                     )
-                    scope.launch { offsetAnimation.snapTo(offsetAnimation.value + dragAmount.x) }
+                    scope.launch { offsetAnimation.snapTo(offsetAnimation.value + amount.x) }
                 }
             },
-        ).also { holder.value = it }
+        ).also { holder.instance = it }
     }
 
     LaunchedEffect(selectedIndex()) { currentIndex = selectedIndex() }
@@ -166,18 +183,7 @@ internal fun SukiLiquidBottomBar(
         }
     }
 
-    val highlight = remember(scope, tabWidthPx) {
-        InteractiveHighlight(scope) { size, _ ->
-            Offset(
-                if (isLtr) (drag.value + 0.5f) * tabWidthPx + panelOffset
-                else size.width - (drag.value + 0.5f) * tabWidthPx + panelOffset,
-                size.height / 2f,
-            )
-        }
-    }
-
     Box(modifier = modifier.width(IntrinsicSize.Min), contentAlignment = Alignment.CenterStart) {
-        // Main lens: captures the actual page, not a re-created gradient.
         Row(
             Modifier
                 .onGloballyPositioned { coordinates ->
@@ -186,6 +192,10 @@ internal fun SukiLiquidBottomBar(
                     tabWidthPx = (contentWidth / tabsCount).coerceAtLeast(0f)
                 }
                 .graphicsLayer { translationX = panelOffset }
+                .dropShadow(
+                    shape = CircleShape,
+                    shadow = Shadow(radius = 10.dp, color = Color.Black, alpha = 0.10f),
+                )
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -193,30 +203,29 @@ internal fun SukiLiquidBottomBar(
                 )
                 .drawBackdrop(
                     backdrop = backdrop,
-                    shape = { ContinuousCapsule },
+                    shape = { CircleShape },
                     effects = {
                         vibrancy()
-                        blur(8.dp.toPx())
+                        blur(4.dp.toPx(), 4.dp.toPx())
                         lens(24.dp.toPx(), 24.dp.toPx())
                     },
-                    highlight = { Highlight.Default.copy(alpha = 1f) },
-                    shadow = { Shadow.Default.copy(color = Color.Black.copy(alpha = 0.10f)) },
+                    highlight = { SukiSpecularHighlight.copy(alpha = 0.75f) },
                     layerBlock = {
-                        val scale = lerp(1f, 1f + 16.dp.toPx() / size.width, drag.pressProgress)
+                        val width = size.width.coerceAtLeast(1f)
+                        val scale = lerp(1f, 1f + 16.dp.toPx() / width, drag.pressProgress)
                         scaleX = scale
                         scaleY = scale
                     },
                     onDrawSurface = { drawRect(containerColor) },
                 )
-                .then(highlight.modifier)
                 .height(64.dp)
                 .padding(4.dp),
             verticalAlignment = Alignment.CenterVertically,
             content = content,
         )
 
-        // Suki's second captured tab layer; the moving lens receives both the
-        // background and tab content via rememberCombinedBackdrop below.
+        // This invisible capture contains the tabs. The moving glass below
+        // refracts it together with the live page backdrop, just like SukiSU.
         Row(
             Modifier
                 .clearAndSetSemantics {}
@@ -225,53 +234,43 @@ internal fun SukiLiquidBottomBar(
                 .graphicsLayer { translationX = panelOffset }
                 .drawBackdrop(
                     backdrop = backdrop,
-                    shape = { ContinuousCapsule },
+                    shape = { CircleShape },
                     effects = {
                         vibrancy()
-                        blur(8.dp.toPx())
-                        lens(24.dp.toPx() * drag.pressProgress, 24.dp.toPx() * drag.pressProgress)
+                        blur(4.dp.toPx(), 4.dp.toPx())
+                        lens(24.dp.toPx(), 24.dp.toPx())
                     },
-                    highlight = { Highlight.Default.copy(alpha = drag.pressProgress) },
+                    highlight = { SukiSpecularHighlight.copy(alpha = 0.45f) },
                     onDrawSurface = { drawRect(containerColor) },
                 )
-                .then(highlight.modifier)
                 .height(56.dp)
-                .padding(horizontal = 4.dp)
-                .graphicsLayer(colorFilter = ColorFilter.tint(accentColor)),
+                .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             content = content,
         )
 
         if (tabWidthPx > 0f) {
-            // Selected lens: actual refraction, chromatic/depth-ready lens,
-            // pressure expansion and velocity deformation copied from Suki.
             Box(
                 Modifier
                     .padding(horizontal = 4.dp)
                     .graphicsLayer {
-                        val offset = drag.value * tabWidthPx
-                        translationX = if (isLtr) offset + panelOffset else -offset + panelOffset
+                        val x = drag.value * tabWidthPx
+                        translationX = if (isLtr) x + panelOffset else -x + panelOffset
                     }
-                    .then(highlight.gestureModifier)
                     .then(drag.modifier)
                     .drawBackdrop(
-                        backdrop = rememberCombinedBackdrop(backdrop, tabsBackdrop),
-                        shape = { ContinuousCapsule },
+                        backdrop = combinedBackdrop,
+                        shape = { CircleShape },
                         effects = {
+                            val progress = drag.pressProgress
                             lens(
-                                10.dp.toPx() * drag.pressProgress,
-                                14.dp.toPx() * drag.pressProgress,
-                                true,
+                                refractionHeight = 10.dp.toPx() * progress,
+                                refractionAmount = 14.dp.toPx() * progress,
+                                depthEffect = true,
+                                chromaticAberration = 0.5f,
                             )
                         },
-                        highlight = { Highlight.Default.copy(alpha = drag.pressProgress) },
-                        shadow = { Shadow(alpha = drag.pressProgress) },
-                        innerShadow = {
-                            InnerShadow(
-                                radius = 8.dp * drag.pressProgress,
-                                alpha = drag.pressProgress,
-                            )
-                        },
+                        highlight = { SukiSpecularHighlight.copy(alpha = drag.pressProgress) },
                         layerBlock = {
                             scaleX = drag.scaleX
                             scaleY = drag.scaleY
@@ -281,9 +280,16 @@ internal fun SukiLiquidBottomBar(
                         },
                         onDrawSurface = {
                             drawRect(Color.Black.copy(alpha = 0.10f), alpha = 1f - drag.pressProgress)
-                            drawRect(Color.Black.copy(alpha = 0.03f * drag.pressProgress))
+                            drawRect(accentColor.copy(alpha = 0.06f * drag.pressProgress))
                         },
                     )
+                    .innerShadow(shape = CircleShape) {
+                        InnerShadow(
+                            radius = 8.dp * drag.pressProgress,
+                            color = Color.Black.copy(alpha = 0.15f),
+                            alpha = drag.pressProgress,
+                        )
+                    }
                     .height(56.dp)
                     .width(with(density) { ((totalWidthPx - 8.dp.toPx()) / tabsCount).toDp() }),
             )
