@@ -287,8 +287,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 )
             }
 
-            val result = rootRunner.runLauncher(
-                scriptPath = BuildConfig.LAUNCHER_SCRIPT_PATH,
+            val result = rootRunner.runSelectedSo(
+                directory = BuildConfig.LAUNCHER_DIRECTORY,
                 cardKey = cardKey,
                 soFileName = selectedSo,
                 onLog = { log ->
