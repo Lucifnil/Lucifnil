@@ -94,15 +94,21 @@ jobs:
             # android-emulator-runner executes script lines independently.
             # Keep every command self-contained so a failure still leaves the
             # startup result and the relevant AndroidRuntime trace in the log.
-            timeout 25 adb shell am start -W -n com.kikyo.cloudlauncher/.MainActivity > activity-start.txt 2>&1 || true
+            # `am start -W` has an Android-side 10s display timeout.  A cold
+            # emulator can finish drawing just after that while the app is
+            # healthy, so launch asynchronously and validate the actual
+            # process + foreground activity instead.
+            adb shell am start -n com.kikyo.cloudlauncher/.MainActivity > activity-start.txt 2>&1
             cat activity-start.txt
-            sleep 8
+            sleep 12
             adb logcat -d -v threadtime > cold-start-full.log || true
             adb logcat -d -v threadtime | grep -E -A 100 -B 15 'FATAL EXCEPTION|Fatal signal|Process: com\.kikyo\.cloudlauncher|ANR in com\.kikyo\.cloudlauncher|tombstoned' > cold-start.log || true
             cat cold-start.log
+            adb shell dumpsys activity top > activity-top.txt
+            cat activity-top.txt
             test ! -s cold-start.log
             test -n "$(adb shell pidof com.kikyo.cloudlauncher | tr -d '\r')"
-            test -z "$(grep 'Status: timeout' activity-start.txt)"
+            grep -q 'com.kikyo.cloudlauncher/.MainActivity' activity-top.txt
 
       - name: Upload cold-start diagnostics
         if: always()
@@ -111,6 +117,7 @@ jobs:
           name: CloudLauncher-cold-start-diagnostics
           path: |
             activity-start.txt
+            activity-top.txt
             cold-start.log
             cold-start-full.log
           if-no-files-found: warn
