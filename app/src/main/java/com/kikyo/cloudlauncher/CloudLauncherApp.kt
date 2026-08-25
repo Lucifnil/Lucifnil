@@ -79,9 +79,9 @@ import androidx.compose.ui.unit.sp
 import com.kikyo.cloudlauncher.liquid.LiquidBottomBarItem
 import com.kikyo.cloudlauncher.liquid.LiquidGlassSurface
 import com.kikyo.cloudlauncher.liquid.SukiLiquidBottomBar
-import top.yukonga.miuix.kmp.blur.Backdrop
-import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -305,7 +305,7 @@ private fun ProfileHeader(rootState: RootState, backdrop: Backdrop) {
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "CINNAMOROLL  ·  V1.3.0",
+                    text = "CINNAMOROLL  ·  V1.3.1",
                     color = MutedBlue,
                     fontSize = 10.sp,
                     maxLines = 1,

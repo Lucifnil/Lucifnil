@@ -37,7 +37,7 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon --stacktrace assembleDebug
           cp app/build/outputs/apk/debug/app-debug.apk \
-            app/build/outputs/apk/debug/CloudLauncher-v1.3.0-debug.apk
+            app/build/outputs/apk/debug/CloudLauncher-v1.3.1-debug.apk
 
       - name: Verify cold start on Android 35 emulator
         uses: reactivecircus/android-emulator-runner@v2
@@ -53,7 +53,7 @@ jobs:
             adb shell am start -W -n com.kikyo.cloudlauncher/.MainActivity
             sleep 8
             test -n "$(adb shell pidof com.kikyo.cloudlauncher | tr -d '\r')"
-            if adb logcat -d -v brief | grep -Eq 'FATAL EXCEPTION|Process: com\\.kikyo\\.cloudlauncher'; then
+            if adb logcat -d -v brief | grep -Eq 'FATAL EXCEPTION|Process: com\.kikyo\.cloudlauncher'; then
               adb logcat -d -v brief
               exit 1
             fi
@@ -61,6 +61,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: CloudLauncher-v1.3.0-debug
-          path: app/build/outputs/apk/debug/CloudLauncher-v1.3.0-debug.apk
+          name: CloudLauncher-v1.3.1-debug
+          path: app/build/outputs/apk/debug/CloudLauncher-v1.3.1-debug.apk
           if-no-files-found: error
