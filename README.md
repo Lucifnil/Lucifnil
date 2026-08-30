@@ -1,60 +1,57 @@
-# 云朵启动器
+# OnePlus 15T Native SukiSU Kernel
 
-一个用于个人 Root 设备的玉桂狗主题启动器。首页只有启动与真实运行状态，设置页负责保存卡密。
+面向 OnePlus 15T（PLZ110）的可审计 Native 内核项目。源码直接来自一加官方
+15T manifest，并固定到当前原厂 `boot.img` 对应的官方 Common 提交，使用官方
+Kleaf 构建 Android 16 / Linux 6.12 / 4K GKI。
 
-## 使用方式
+[项目源码](https://github.com/Lucifnil/OnePlus15T-SukiSU-Native) ·
+[最新真机验证版 r30](https://github.com/Lucifnil/OnePlus15T-SukiSU-Native/releases/tag/official-native-sukisu-susfs-built-in-6.12.38-r30)
 
-1. 安装 APK 后，在 Root 管理器中授予「云朵启动器」Root 权限。
-2. 将需要启动的 `.so` 放在 `/data/adb` 的直接目录中。可以有多个文件，例如：
+## 当前版本
 
-   ```text
-   /data/adb/lib20260820_080943.so
-   /data/adb/lib备用.so
-   ```
+项目提供三个 CI 变体：
 
-3. 在「设置」页填写并保存卡密，点击「启动 SO」区域的刷新图标；从列表中选择要启动的文件。
-4. 回到首页点「一键启动」。启动前会重新读取该目录，确保选择的文件仍存在。
+- `baseline`：不包含 KernelSU、SukiSU、SUSFS、KPM 或性能补丁的纯净基线；
+- `sukisu_builtin`：集成官方 SukiSU Ultra `v4.1.3`，使用
+  `CONFIG_KSU=y` 的 Built-in 后端，不启用 SUSFS 或 KPM；
+- `sukisu_susfs_builtin`：在 Built-in 版本上集成官方 SUSFS `v2.1.0`，
+  启用隐藏功能、禁用内核日志且不启用 KPM。
 
-应用实际执行的是：
+目前的正式成果是 `sukisu_susfs_builtin` r30。它已在
+OnePlus 15T `PLZ110_16.0.10.500_CN01` 上完成临时启动、永久刷入、冷启动和
+完整真机回归。
 
-```sh
-su -c "chmod 700 '/data/adb/<选中的文件>.so' && exec '/data/adb/<选中的文件>.so' -k '<已保存卡密>' --record-mirror"
-```
+## 真机验证
 
-应用会确认所选文件仍在 `/data/adb` 中、设置执行权限，并以原有参数直接启动：
+r30 已确认：
 
-```sh
-"$so_file" -k "$card_key" --record-mirror
-```
+- 内核版本为 `6.12.38-android16-5-g844001fb8721-ab14552068-4k`；
+- SukiSU Ultra 显示 `工作中 <Built-in>`，驱动和管理器版本均为 `40796`；
+- SuSFS 显示 `v2.1.0 (Tracepoint Syscall Redirect)`；
+- Wi-Fi、5G 移动数据、蓝牙、扬声器、振动器和主要传感器正常；
+- 相机设备及 1216×2640 / 60–165 Hz 显示链路正常；
+- SELinux 保持 `Enforcing`，未发现 panic、Oops、watchdog bite 或新增驱动回归。
 
-## 运行状态
+## 为什么采用 Native 路线
 
-启动页会显示唯一的一条动态状态。点击状态卡可查看本次的标准输出、错误输出和退出码：
+早期通用 GKI/错误 Common 提交与当前 OTA 厂商模块不兼容，曾导致 Wi-Fi、移动
+数据、蓝牙和扬声器失效。本项目最终回到一加官方 PLZ110 源码与原厂提交，并
+处理公开 Kleaf 目标生成的保护模块名列表与量产系统实际模块策略之间的差异。
 
-- `启动成功`：原生程序以退出码 `0` 返回。
-- `启动失败`：原生程序返回非零退出码，或 Root 不可用。
-- `启动超时`：五分钟内未返回。
+当前构建使用原厂 Clang build `14043575`、GENDWARFKSYMS 和 Zstd DWARF 设置；
+抽查的 434 个公共模块 CRC 与原厂模块全部一致，确保内核与随 OTA 发布的厂商
+模块保持兼容。
 
-如果原生程序自行转入后台，退出码只能说明脚本已成功交接；它无法证明后台进程之后一直存活。
+## 构建与刷入纪律
 
-## 安全与兼容性
+- 所有主要输入均记录在 `manifest.lock`；
+- CI 校验官方 manifest、源码提交、Clang build、SukiSU/SUSFS 版本、最终配置、
+  补丁哈希和产物 SHA-256；
+- 明确拒绝 KPM、ADIOS、ReKernel、TCP Brutal 和预编译 `vmlinux` 覆盖；
+- Release 附带最终 `.config`、原厂锚点、源码清单、内核版本和 SHA-256；
+- 推荐使用 Release 中的 AnyKernel3 ZIP 刷入，它只更新 `boot`，不需要先刷 LKM，
+  也不会修改 `init_boot`；
+- 刷写前应保留与当前 OTA 匹配的原厂 `boot.img` 作为回退文件。
 
-- 卡密通过 Android Keystore 支持的加密偏好设置保存，只保存在本机。
-- 输出记录会遮盖本次卡密。
-- 只读取 `/data/adb` 的直接 `.so` 文件；不递归扫描子目录。
-- `.so` 不需要预先拥有执行权限，应用会在启动前执行 `chmod 700`。
-- 目标 `.so` 是 ARM64 Android 可执行文件，因此设备需为 `arm64-v8a`。
-- 最低 Android 版本为 8.0（API 26）。
-- 当前交付的是个人使用的 debug 签名 APK；首次安装时 Android 可能显示普通的未知来源安装提示。
-
-> 使用相同签名构建时可以覆盖旧版本，已保存的卡密会保留。若 Android 提示签名不一致，则需先卸载旧包；卸载会清除应用内保存的卡密。
-
-## 从源码构建
-
-使用 Android Studio 打开此目录，或在已配置 Android SDK 的环境中执行：
-
-```sh
-./gradlew assembleDebug
-```
-
-不再依赖 `/data/adb` 中的固定 `.sh` 启动脚本。
+> 本项目只维护基于一加官方源码的 Native 路线；旧 Stable/通用 GKI 实验不再作为
+> 当前发布方向。
